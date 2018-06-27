@@ -1,0 +1,36 @@
+[
+    {
+        "lloss-mean": -0.4829334319,
+        "llos-std": 0.00535488081374,
+        "exec-time-sec": 772.511557102,
+        "valid_mode": "cv",
+        "n_folds": 3,
+        "eta": 0.1,
+        "num_rounds": 10000,
+        "max_depth": 10,
+        "min_child_weight": 4,
+        "gamma": 1,
+        "subsample": 0.7,
+        "colsample_bytree": 0.7,
+        "calibration": false,
+        "calibration_folds": 5,
+        "calibration_method": "isotonic"
+    },
+    {
+        "lloss-mean": -0.47376124206,
+        "llos-std": 0.00323548514227,
+        "exec-time-sec": 3183.97259498,
+        "valid_mode": "cv",
+        "n_folds": 3,
+        "eta": 0.1,
+        "num_rounds": 10000,
+        "max_depth": 10,
+        "min_child_weight": 4,
+        "gamma": 1,
+        "subsample": 0.7,
+        "colsample_bytree": 0.7,
+        "calibration": true,
+        "calibration_folds": 5,
+        "calibration_method": "isotonic"
+    }
+]
