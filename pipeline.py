@@ -119,4 +119,4 @@ def test_validate():
         'num_rounds': 5
     }
     
-    print(validate(params))
+    print(validate(init_params(params)))
