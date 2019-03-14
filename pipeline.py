@@ -1,47 +1,16 @@
 import pandas as pd
+from keras import Sequential
+from keras.layers import Dense, Dropout
+from keras.optimizers import Adam
+from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.model_selection import cross_val_score
 import numpy as np
+from sklearn.preprocessing.label import label_binarize
 
 import ds_tools.dstools.ml.xgboost_tools as xgb
+from ds_tools.dstools.ml.experiment import run_experiment, update_model_stats
 
 
-def update_model_stats(stats_file, params, results):
-    import json
-    import os.path
-    
-    if os.path.exists(stats_file):
-        with open(stats_file, 'r') as f:
-            stats = json.load(f)
-    else:
-        stats = []
-        
-    stats.append({**results, **params})
-    
-    with open(stats_file, 'w') as f:
-        json.dump(stats, f, indent=4)
-
-        
-def run_experiment(evaluator, params, stats_file):    
-    import time
-    
-    params = init_params(params)
-    start = time.time()
-    scores = evaluator(params)
-    exec_time = time.time() - start
-    update_model_stats(stats_file, params, {**scores, 'exec-time-sec': exec_time})
-
-
-def cv_test(est, n_folds, n_rows):
-    df = pd.read_csv('train.csv.gz', index_col='id', nrows=n_rows)
-
-    features = df.drop(['target'], axis=1)
-    labels = df.target.apply(lambda e: e[6:]).astype(np.int16)-1
-    
-    scores = cross_val_score(estimator=est, X=features, y=labels, cv=n_folds, scoring='neg_log_loss')
-    return {'lloss-mean': scores.mean(), 'llos-std': scores.std()}
-    
-    
 def submission(est):
     df = pd.read_csv('train.csv.gz', index_col='id')
 
@@ -50,17 +19,18 @@ def submission(est):
     
     model = est.fit(features, labels)
 
-    df_test = read_csv('test.csv.gz', index_col='id')
+    df_test = pd.read_csv('test.csv.gz', index_col='id')
 
     y_pred = model.predict_proba(df_test)
 
-    res_df = DataFrame(y_pred, columns=['Class_%d' % n for n in range(1, 10)], index=df_test.index)
+    res_df = pd.DataFrame(y_pred, columns=['Class_%d' % n for n in range(1, 10)], index=df_test.index)
     res_df.to_csv('results.csv', index_label='id')
 
-    
-def init_params(overrides):
+
+def otto_params(overrides):
     defaults = {
-        'valid_mode': 'cv',
+        'est': 'xgb',
+        'valid_type': 'cv',
         'n_folds': 3,
         "eta": 0.1,
         "num_rounds": 10000,
@@ -72,12 +42,17 @@ def init_params(overrides):
         'calibration': False,
         'calibration_folds': 5,
         'calibration_method': 'isotonic',
+        'epochs': 3,
+        'dropout': .3,
+        'batch_size': 256,
+        'lr': .01,
+        'decay': .001,
     }
     
     return {**defaults, **overrides}
     
 
-def init_xgb_est(params):
+def xgb_est(params):
     keys = {
         'eta',
         'num_rounds',
@@ -100,8 +75,43 @@ def init_xgb_est(params):
     return xgb.XGBoostClassifier(**xgb_params)
 
 
-def validate(params):
-    est = init_xgb_est(params)
+def keras_est(params):
+    def create_model():
+        dropout = params['dropout']
+        model = Sequential()
+        model.add(Dense(128, input_dim=93, activation='relu'))
+        model.add(Dropout(dropout))
+        model.add(Dense(64, activation='relu'))
+        model.add(Dropout(dropout))
+        model.add(Dense(9, activation='softmax'))
+
+        optimizer = Adam(lr=params['lr'], decay=params['decay'])
+        model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+        return model
+
+    est = KerasClassifier(build_fn=create_model, epochs=params['epochs'], batch_size=params['batch_size'])
+    return est
+
+
+def otto_dataset(params):
+    df = pd.read_csv('train.csv.gz', index_col='id', nrows=params.get('n_rows'))
+
+    features = df.drop(['target'], axis=1)
+    labels = df.target.apply(lambda e: e[6:]).astype(np.int16) - 1
+    if params['est'] == 'keras':
+        labels = label_binarize(labels, classes=sorted(set(labels)))
+
+    return features, labels
+
+
+def otto_estimator(params):
+    est_type = params['est']
+    if est_type == 'xgb':
+        est = xgb_est(params)
+    elif est_type == 'keras':
+        est = keras_est(params)
+    else:
+        raise AttributeError(f'unknown estimator type: {est_type}')
     
     if params['calibration']:
         est = CalibratedClassifierCV(
@@ -109,14 +119,52 @@ def validate(params):
             cv=params['calibration_folds'],
             method=params['calibration_method'])
     
-    return cv_test(est, params['n_folds'], params.get('n_rows')) 
+    return est
 
 
-def test_validate():
-    params = {
+def otto_experiment(overrides):
+    params = otto_params(overrides)
+
+    results = run_experiment(
+        params=params,
+        est=otto_estimator,
+        dataset=otto_dataset,
+        scorer='neg_log_loss')
+
+    update_model_stats('results.json', params, results)
+
+
+def test_otto_experiment_xgb():
+    overrides = {
         'n_folds': 2,
-        #'calibration': True,
         'num_rounds': 5
     }
-    
-    print(validate(init_params(params)))
+
+    params = otto_params(overrides)
+
+    results = run_experiment(
+        params=params,
+        est=otto_estimator,
+        dataset=otto_dataset,
+        scorer='neg_log_loss')
+
+    print(results)
+
+
+def test_otto_experiment_keras():
+    overrides = {
+        'est': 'keras',
+        'n_folds': 2,
+        'num_rounds': 5,
+        'epochs': 1,
+    }
+
+    params = otto_params(overrides)
+
+    results = run_experiment(
+        params=params,
+        est=otto_estimator,
+        dataset=otto_dataset,
+        scorer='neg_log_loss')
+
+    print(results)

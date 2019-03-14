@@ -1,9 +1,10 @@
 [
     {
+        "est": "xgb",
         "lloss-mean": -0.4829334319,
         "llos-std": 0.00535488081374,
         "exec-time-sec": 772.511557102,
-        "valid_mode": "cv",
+        "valid_type": "cv",
         "n_folds": 3,
         "eta": 0.1,
         "num_rounds": 10000,
@@ -17,10 +18,11 @@
         "calibration_method": "isotonic"
     },
     {
+        "est": "xgb",
         "lloss-mean": -0.47376124206,
         "llos-std": 0.00323548514227,
         "exec-time-sec": 3183.97259498,
-        "valid_mode": "cv",
+        "valid_type": "cv",
         "n_folds": 3,
         "eta": 0.1,
         "num_rounds": 10000,
