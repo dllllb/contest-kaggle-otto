@@ -1,14 +1,10 @@
 import pandas as pd
-from keras import Sequential
-from keras.layers import Dense, Dropout
-from keras.optimizers import Adam
-from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.calibration import CalibratedClassifierCV
 import numpy as np
+from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing.label import label_binarize
 
 import ds_tools.dstools.ml.xgboost_tools as xgb
-from ds_tools.dstools.ml.experiment import run_experiment, update_model_stats
 
 
 def submission(est):
@@ -30,7 +26,6 @@ def submission(est):
 def otto_params(overrides):
     defaults = {
         'est': 'xgb',
-        'valid_type': 'cv',
         'n_folds': 3,
         "eta": 0.1,
         "num_rounds": 10000,
@@ -76,6 +71,11 @@ def xgb_est(params):
 
 
 def keras_est(params):
+    from keras import Sequential
+    from keras.layers import Dense, Dropout
+    from keras.optimizers import Adam
+    from keras.wrappers.scikit_learn import KerasClassifier
+
     def create_model():
         dropout = params['dropout']
         model = Sequential()
@@ -168,3 +168,35 @@ def test_otto_experiment_keras():
         scorer='neg_log_loss')
 
     print(results)
+
+
+def update_model_stats(stats_file, params, results):
+    import json
+    import os.path
+
+    if os.path.exists(stats_file):
+        with open(stats_file, 'r') as f:
+            stats = json.load(f)
+    else:
+        stats = []
+
+    stats.append({**results, **params})
+
+    with open(stats_file, 'w') as f:
+        json.dump(stats, f, indent=4)
+
+
+def run_experiment(est, dataset, scorer, params):
+    import time
+
+    start = time.time()
+    cv = params['n_folds']
+    features, target = dataset(params)
+    scores = cv_test(est(params), features, target, scorer, cv)
+    exec_time = time.time() - start
+    return {**scores, 'exec-time-sec': exec_time}
+
+
+def cv_test(est, features, target, scorer, cv):
+    scores = cross_val_score(est, features, target, scoring=scorer, cv=cv)
+    return {'score-mean': scores.mean(), 'score-std': scores.std()}
