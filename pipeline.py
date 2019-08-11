@@ -1,10 +1,9 @@
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 import numpy as np
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.preprocessing.label import label_binarize
-
-import ds_tools.dstools.ml.xgboost_tools as xgb
+from xgboost import XGBClassifier
 
 
 def submission(est):
@@ -49,8 +48,8 @@ def otto_params(overrides):
 
 def xgb_est(params):
     keys = {
-        'eta',
-        'num_rounds',
+        'learning_rate',
+        'n_estimators',
         'max_depth',
         'min_child_weight',
         'gamma',
@@ -60,14 +59,23 @@ def xgb_est(params):
     
     xgb_params = {
         "objective": "multi:softprob",
-        "num_class": 9,
         "scale_pos_weight": 1,
-        "verbose": 10,
         "eval_metric": "mlogloss",
         **{k: v for k, v in params.items() if k in keys}
     }
-    
-    return xgb.XGBoostClassifier(**xgb_params)
+
+    class XGBC(XGBClassifier):
+        def fit(self, x, y, **kwargs):
+            f_train, f_val, t_train, t_val = train_test_split(x, y, test_size=.05)
+            super().fit(
+                f_train,
+                t_train,
+                eval_set=[(f_val, t_val)],
+                eval_metric='mlogloss',
+                early_stopping_rounds=50,
+                verbose=10)
+
+    return XGBC(**xgb_params)
 
 
 def keras_est(params):
